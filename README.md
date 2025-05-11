@@ -1,34 +1,7 @@
-<div align="center">
-  <a href="https://discord.gg/ynr44H6KAY">
-      <img width="125" height="125" src="./.github/knight-hacks-logo.svg"/>
-  </a>
-  <h1>Forge</h1>
-</div>
-
-> [!NOTE]
->
-> Interested in learning more about this repository? Please join [Knight Hacks' community Discord server](https://discord.gg/ynr44H6KAY)!
-
-## 👋 Introduction
-
-Welcome to Knight Hacks' monorepo, Forge! It contains the source code for all applications created by our development team!
-
-## 🗺 Layout
-
-- [`.github`](/.github) Contains all of our GitHub-related files
-- [`apps`](/apps) Applications we've built and maintain
-- [`packages`](/packages) Packages we share across our applications
-- [`tooling`](/tooling) Configuration files for tools we use when building our applications
-- [`turbo/generators`](/turbo/generators) A CLI tool to generate boilerplate for a new package under [`packages`](/packages)
-
-## 👏 Contributing
-
-If you would like to contribute to this repository, please read our [contributing guide](./CONTRIBUTING.md)!
-
-## ❓ FAQ
-
-If you have any questions, please ask them in [our community Discord server](https://discord.gg/ynr44H6KAY)!
-
-## 📝 License
-
-This repository is licensed under the [MIT License](./LICENSE).
+This is just where I keep the stuff that I worked on and how to navigate it
+**application branch**: it is where I made my application for the dev team
+          inside blade folder
+          
+**contactForm branch**: my first task
+          inside club folder
+          
