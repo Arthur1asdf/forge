@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { render } from "@react-email/render";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 
 import {
   ALLERGIES,
+  COUNTRIES,
   GENDERS,
   KNIGHTHACKS_MAX_RESUME_SIZE,
   LEVELS_OF_STUDY,
+  MAJORS,
   RACES_OR_ETHNICITIES,
   SCHOOLS,
   SHIRT_SIZES,
@@ -40,13 +44,27 @@ import {
 import { Textarea } from "@forge/ui/textarea";
 import { toast } from "@forge/ui/toast";
 
+import KH8ApplyEmail from "~/app/admin/hackathon/hackers/_components/kh8-apply-email";
 import { api } from "~/trpc/react";
 
-export function HackerFormPage() {
+export function HackerFormPage({
+  hackathonId,
+  hackathonName,
+  hackathonStartDate,
+}: {
+  hackathonId: string;
+  hackathonName: string;
+  hackathonStartDate: string;
+}) {
   const router = useRouter();
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [comboBoxKey, setComboBoxKey] = useState(0);
   const utils = api.useUtils();
+  console.log(hackathonId);
+
+  // Get previous hacker profile to pre-fill form
+  const { data: previousHacker } = api.hackathon.getPreviousHacker.useQuery();
 
   const uploadResume = api.resume.uploadResume.useMutation({
     onError() {
@@ -72,12 +90,32 @@ export function HackerFormPage() {
     },
   });
 
+  const sendEmail = api.email.sendEmail.useMutation();
+
   const toggleAllergy = (allergy: string) => {
-    setSelectedAllergies((prev) =>
-      prev.includes(allergy)
+    setSelectedAllergies((prev) => {
+      const next = prev.includes(allergy)
         ? prev.filter((a) => a !== allergy)
-        : [...prev, allergy],
-    );
+        : [...prev, allergy];
+
+      form.setValue("foodAllergies", next.join(","));
+      return next;
+    });
+  };
+
+  // Helper function to calculate age
+  const calculateAge = (birthDate: Date, referenceDate: Date): number => {
+    let age = referenceDate.getFullYear() - birthDate.getFullYear();
+    const monthDiff = referenceDate.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && referenceDate.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    return age;
   };
 
   // Setup React Hook Form
@@ -91,9 +129,22 @@ export function HackerFormPage() {
       phoneNumber: z
         .string()
         .regex(/^\d{10}|\d{3}-\d{3}-\d{4}$|^$/, "Invalid phone number"),
+      country: z.string().min(1, "Required"),
       dob: z
         .string()
         .pipe(z.coerce.date())
+        .refine(
+          (date) => {
+            const hackathonDate = new Date(hackathonStartDate);
+            const age = calculateAge(date, hackathonDate);
+
+            return age >= 18;
+          },
+          {
+            message:
+              "You must be at least 18 years old by the hackathon start date to participate",
+          },
+        )
         .transform((date) => date.toISOString()),
       gradDate: z
         .string()
@@ -177,6 +228,12 @@ export function HackerFormPage() {
           }
         })
         .optional(),
+      agreesToMLHCodeOfConduct: z.boolean().refine((val) => val === true, {
+        message: "You must agree to the MLH Code of Conduct",
+      }),
+      agreesToMLHDataSharing: z.boolean().refine((val) => val === true, {
+        message: "You must agree to the MLH data sharing terms",
+      }),
     }),
     defaultValues: {
       firstName: "",
@@ -185,6 +242,7 @@ export function HackerFormPage() {
       discordUser: "",
       email: "",
       phoneNumber: "",
+      country: undefined,
       school: undefined,
       levelOfStudy: undefined,
       shirtSize: undefined,
@@ -194,16 +252,58 @@ export function HackerFormPage() {
       resumeUrl: "",
       dob: "",
       gradDate: "",
-      status: undefined,
       survey1: "",
       survey2: "",
       isFirstTime: false,
       foodAllergies: "",
       agreesToReceiveEmailsFromMLH: false,
+      agreesToMLHCodeOfConduct: false,
+      agreesToMLHDataSharing: false,
     },
   });
 
   const fileRef = form.register("resumeUpload");
+
+  useEffect(() => {
+    if (previousHacker) {
+      form.reset({
+        firstName: previousHacker.firstName,
+        lastName: previousHacker.lastName,
+        gender: previousHacker.gender,
+        raceOrEthnicity: previousHacker.raceOrEthnicity,
+        discordUser: previousHacker.discordUser,
+        email: previousHacker.email,
+        phoneNumber: previousHacker.phoneNumber ?? undefined,
+        country: previousHacker.country,
+        school: previousHacker.school,
+        levelOfStudy: previousHacker.levelOfStudy,
+        shirtSize: previousHacker.shirtSize,
+        githubProfileUrl: previousHacker.githubProfileUrl ?? undefined,
+        linkedinProfileUrl: previousHacker.linkedinProfileUrl ?? undefined,
+        websiteUrl: previousHacker.websiteUrl ?? undefined,
+        resumeUrl: previousHacker.resumeUrl, // Keep existing resume URL
+        dob: previousHacker.dob,
+        gradDate: previousHacker.gradDate,
+        survey1: "", // Keep survey answers empty for new applications
+        survey2: "", // Keep survey answers empty for new applications
+        isFirstTime: previousHacker.isFirstTime,
+        foodAllergies: previousHacker.foodAllergies,
+        agreesToReceiveEmailsFromMLH:
+          previousHacker.agreesToReceiveEmailsFromMLH,
+        agreesToMLHCodeOfConduct: false, // Always require fresh consent
+        agreesToMLHDataSharing: false, // Always require fresh consent
+      });
+
+      // Set selected allergies for the UI
+      if (previousHacker.foodAllergies) {
+        const allergies = previousHacker.foodAllergies.split(",");
+        setSelectedAllergies(allergies);
+      }
+
+      // Force ResponsiveComboBox components to re-render with new values
+      setComboBoxKey((prev) => prev + 1);
+    }
+  }, [previousHacker, form]);
 
   // Convert a resume to base64 for client-server transmission
   const fileToBase64 = (file: File): Promise<string> =>
@@ -249,7 +349,9 @@ export function HackerFormPage() {
               email: values.email,
               dob: values.dob,
               phoneNumber: values.phoneNumber,
+              country: values.country as (typeof COUNTRIES)[number],
               school: values.school,
+              major: values.major,
               levelOfStudy: values.levelOfStudy,
               gender: values.gender ?? "Prefer not to answer",
               gradDate: values.gradDate,
@@ -260,10 +362,24 @@ export function HackerFormPage() {
               websiteUrl: values.websiteUrl,
               isFirstTime: values.isFirstTime,
               agreesToReceiveEmailsFromMLH: values.agreesToReceiveEmailsFromMLH,
+              agreesToMLHCodeOfConduct: values.agreesToMLHCodeOfConduct,
+              agreesToMLHDataSharing: values.agreesToMLHDataSharing,
               survey1: values.survey1,
               survey2: values.survey2,
               foodAllergies: values.foodAllergies,
               resumeUrl,
+              hackathonName: hackathonId,
+            });
+
+            const html = await render(
+              <KH8ApplyEmail name={values.firstName} />,
+            );
+
+            sendEmail.mutate({
+              from: "donotreply@knighthacks.org",
+              to: values.email,
+              subject: "KnightHacks VIII - We recieved your application!",
+              body: html,
             });
           } catch (error) {
             // eslint-disable-next-line no-console
@@ -274,10 +390,30 @@ export function HackerFormPage() {
           }
         })}
       >
-        <h1 className="text-2xl font-bold">Hacker Registration</h1>
+        <h1 className="text-2xl font-bold">
+          {hackathonName} Hacker Registration
+        </h1>
         <p className="text-sm text-gray-400">
-          <i>Fill out this form to apply to the hackathon!</i>
+          <i>Fill out this form to apply to the Hackathon!</i>
         </p>
+        {previousHacker && (
+          <div className="rounded-md bg-blue-50 p-4 dark:bg-purple-900/20">
+            <div className="flex">
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                  Information Pre-filled
+                </h3>
+                <div className="mt-2 text-sm text-purple-700 dark:text-purple-300">
+                  <p>
+                    We've pre-filled this form with information from your
+                    previous hackathon application. Please review and update any
+                    information as needed.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <FormField
           control={form.control}
           name="firstName"
@@ -359,6 +495,30 @@ export function HackerFormPage() {
         />
         <FormField
           control={form.control}
+          name="country"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                Country of Residence <span className="text-destructive">*</span>
+              </FormLabel>
+              <FormControl>
+                <ResponsiveComboBox
+                  key={`country-${comboBoxKey}-${field.value || "empty"}`}
+                  items={COUNTRIES}
+                  renderItem={(country) => <div>{country}</div>}
+                  getItemValue={(country) => country}
+                  getItemLabel={(country) => country}
+                  onItemSelect={(country) => field.onChange(country)}
+                  buttonPlaceholder={field.value || "Select your country"}
+                  inputPlaceholder="Search for your country"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
           name="gender"
           render={({ field }) => (
             <FormItem>
@@ -370,10 +530,7 @@ export function HackerFormPage() {
                 </span>
               </FormLabel>
               <FormControl>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
+                <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select your gender" />
@@ -405,10 +562,7 @@ export function HackerFormPage() {
                 </span>
               </FormLabel>
               <FormControl>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
+                <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select your race or ethnicity" />
@@ -436,10 +590,7 @@ export function HackerFormPage() {
                 Level of Study <span className="text-destructive">*</span>
               </FormLabel>
               <FormControl>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
+                <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select your level of study" />
@@ -468,13 +619,38 @@ export function HackerFormPage() {
               </FormLabel>
               <FormControl>
                 <ResponsiveComboBox
+                  key={`school-${comboBoxKey}-${field.value}`}
                   items={SCHOOLS}
                   renderItem={(school) => <div>{school}</div>}
                   getItemValue={(school) => school}
                   getItemLabel={(school) => school}
                   onItemSelect={(school) => field.onChange(school)}
-                  buttonPlaceholder="Select your school"
+                  buttonPlaceholder={field.value}
                   inputPlaceholder="Search for your school"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="major"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                Major of Study <span className="text-destructive">*</span>
+              </FormLabel>
+              <FormControl>
+                <ResponsiveComboBox
+                  key={`major-${comboBoxKey}-${field.value}`}
+                  items={MAJORS}
+                  renderItem={(major) => <div>{major}</div>}
+                  getItemValue={(major) => major}
+                  getItemLabel={(major) => major}
+                  onItemSelect={(major) => field.onChange(major)}
+                  buttonPlaceholder={field.value}
+                  inputPlaceholder="Search for your major"
                 />
               </FormControl>
               <FormMessage />
@@ -505,10 +681,7 @@ export function HackerFormPage() {
                 Shirt Size <span className="text-destructive">*</span>
               </FormLabel>
               <FormControl>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
+                <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select your shirt size" />
@@ -533,12 +706,12 @@ export function HackerFormPage() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                Why do you want to attend Knighthacks?{" "}
+                Why do you want to attend {hackathonName}?{" "}
                 <span className="text-destructive">*</span>
               </FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="Why do you want to attend KnightHacks?"
+                  placeholder="Why do you want to attend?"
                   {...field}
                   value={field.value}
                 />
@@ -553,12 +726,12 @@ export function HackerFormPage() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                What do you hope to achieve at Knighthacks?{" "}
+                What do you hope to achieve at {hackathonName}?{" "}
                 <span className="text-destructive">*</span>
               </FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="What are your goals at this hackathon?"
+                  placeholder="What are your goals for this event?"
                   {...field}
                   value={field.value}
                 />
@@ -653,6 +826,7 @@ export function HackerFormPage() {
                   }}
                 />
               </FormControl>
+
               <FormMessage />
             </FormItem>
           )}
@@ -660,11 +834,11 @@ export function HackerFormPage() {
         <FormField
           control={form.control}
           name="foodAllergies"
-          render={({ field }) => {
+          render={() => {
             return (
               <FormItem>
                 <FormLabel>
-                  Food Allergies
+                  Food Allergies/Restrictions
                   <span className="text-gray-400">
                     {" "}
                     &mdash; <i>Optional</i>
@@ -709,7 +883,6 @@ export function HackerFormPage() {
                             key={allergy}
                             onClick={() => {
                               toggleAllergy(allergy);
-                              field.onChange(selectedAllergies.join(","));
                             }}
                             className="flex w-full cursor-pointer items-center space-x-2 rounded-md px-1 py-1 text-sm transition-colors hover:bg-gray-200 hover:text-black dark:hover:bg-gray-900 dark:hover:text-white"
                           >
@@ -745,12 +918,96 @@ export function HackerFormPage() {
               </FormControl>
               <div className="flex items-center space-y-1 leading-none">
                 <FormLabel>
-                  This is my first time participating in a hackathon
+                  This is my first time participating in a Hackathon.
                 </FormLabel>
               </div>
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="agreesToMLHCodeOfConduct"
+          render={({ field }) => (
+            <FormItem className="flex flex-row space-x-3 space-y-0">
+              <FormControl>
+                <Checkbox
+                  checked={!!field.value}
+                  onCheckedChange={field.onChange}
+                  className="flex h-5 w-5 items-center justify-center [&>span>svg]:h-6 [&>span>svg]:w-6"
+                />
+              </FormControl>
+              <div className="flex items-center space-y-1 leading-none">
+                <FormLabel>
+                  I have read and agree to the{" "}
+                  <Link
+                    href="https://github.com/MLH/mlh-policies/blob/main/code-of-conduct.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    MLH Code of Conduct
+                  </Link>
+                  . <span className="text-destructive">*</span>
+                </FormLabel>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="agreesToMLHDataSharing"
+          render={({ field }) => (
+            <FormItem className="flex flex-row space-x-3 space-y-0">
+              <FormControl>
+                <Checkbox
+                  checked={!!field.value}
+                  onCheckedChange={field.onChange}
+                  className="flex h-5 w-5 items-center justify-center [&>span>svg]:h-6 [&>span>svg]:w-6"
+                />
+              </FormControl>
+              <div className="flex items-center space-y-1 leading-none">
+                <FormLabel>
+                  I authorize you to share my application/registration
+                  information with Major League Hacking for event
+                  administration, ranking, and MLH administration in-line with
+                  the{" "}
+                  <Link
+                    href="https://github.com/MLH/mlh-policies/blob/main/privacy-policy.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    MLH Privacy Policy
+                  </Link>
+                  . I further agree to the terms of both the{" "}
+                  <Link
+                    href="https://github.com/MLH/mlh-policies/blob/main/contest-terms.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    MLH Contest Terms and Conditions
+                  </Link>{" "}
+                  and the{" "}
+                  <Link
+                    href="https://github.com/MLH/mlh-policies/blob/main/privacy-policy.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    MLH Privacy Policy
+                  </Link>
+                  . <span className="text-destructive">*</span>
+                </FormLabel>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="agreesToReceiveEmailsFromMLH"
@@ -766,7 +1023,7 @@ export function HackerFormPage() {
               <div className="flex items-center space-y-1 leading-none">
                 <FormLabel>
                   I authorize MLH to send me occasional emails about relevant
-                  events, career opportunities, and community announcements
+                  events, career opportunities, and community announcements.
                 </FormLabel>
               </div>
             </FormItem>
@@ -774,7 +1031,9 @@ export function HackerFormPage() {
         />
 
         {loading ? (
-          <Loader2 className="animate-spin" />
+          <div className="flex justify-center">
+            <Loader2 className="animate-spin" />
+          </div>
         ) : (
           <Button type="submit">Submit</Button>
         )}

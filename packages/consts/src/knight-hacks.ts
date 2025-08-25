@@ -21,7 +21,82 @@ export const ALLERGIES = [
   "Peanuts",
   "Wheat",
   "Soybeans",
+  "Halal",
+  "Kosher",
+  "Vegetarian",
+  "Vegan",
 ] as const;
+
+export const MAJORS = [
+  "Computer Science",
+  "Information Technology",
+  "Software Engineering",
+  "Computer Engineering",
+  "Digital Media",
+  "Business",
+  "Accounting",
+  "Aerospace Engineering",
+  "Anthropology",
+  "Architecture",
+  "Art",
+  "Astronomy",
+  "Biochemistry",
+  "Biology",
+  "Biomedical Engineering",
+  "Chemical Engineering",
+  "Chemistry",
+  "Civil Engineering",
+  "Communication",
+  "Criminal Justice",
+  "Data Science",
+  "Design",
+  "Economics",
+  "Education",
+  "Electrical Engineering",
+  "English",
+  "Environmental Science",
+  "Finance",
+  "Game Design",
+  "Geography",
+  "Geology",
+  "Graphic Design",
+  "Health Sciences",
+  "History",
+  "Hospitality Management",
+  "Human Resources",
+  "Industrial Engineering",
+  "International Relations",
+  "Journalism",
+  "Languages",
+  "Law",
+  "Linguistics",
+  "Management",
+  "Marketing",
+  "Mathematics",
+  "Mechanical Engineering",
+  "Medicine",
+  "Music",
+  "Nursing",
+  "Philosophy",
+  "Physics",
+  "Political Science",
+  "Pre-Med",
+  "Pre-Law",
+  "Psychology",
+  "Public Administration",
+  "Public Health",
+  "Religious Studies",
+  "Social Work",
+  "Sociology",
+  "Statistics",
+  "Theater",
+  "Urban Planning",
+  "Veterinary Science",
+  "Interdisciplinary Studies",
+  "Other",
+] as const;
+
+export type Major = (typeof MAJORS)[number];
 
 export const SHORT_LEVELS_OF_STUDY = [
   "Undergraduate University (2 year)",
@@ -122,6 +197,31 @@ export const EVENT_POINTS: Record<EventTag, number> = {
 
 export const KNIGHTHACKS_S3_BUCKET_REGION = "us-east-1";
 export const KNIGHTHACKS_MAX_RESUME_SIZE = 5 * 1000000; // 5MB
+
+export const KNIGHTHACKS_MAX_PROFILE_PICTURE_SIZE = 2 * 1024 * 1024; // 2MB
+export const ALLOWED_PROFILE_PICTURE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+export const ALLOWED_PROFILE_PICTURE_EXTENSIONS = [
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+];
+
+export const TERM_TO_DATE = {
+  Spring: { month: 4, day: 2 }, // May 2
+  Summer: { month: 7, day: 6 }, // Aug 6
+  Fall: { month: 11, day: 10 }, // Dec 10
+} as const;
+export type GradTerm = keyof typeof TERM_TO_DATE;
+
+export const GUILD_TAG_OPTIONS = ["alumni", "current"] as const;
+export type GuildTag = (typeof GUILD_TAG_OPTIONS)[number];
 
 export const MINIO_ENDPOINT = "minio-g0soogg4gs8gwcggw4ococok.knighthacks.org";
 export const BUCKET_NAME = "knight-hacks-qr";
@@ -5387,3 +5487,29 @@ export const RANKING_STYLES: string[] = [
   "md:text-lg lg:text-lg font-semibold text-gray-400",
   "md:text-lg lg:text-lg font-medium text-orange-500",
 ];
+
+export const SEMESTER_START_DATES = {
+  spring: {
+    month: 0,
+    day: 1, // first day of January
+  },
+  summer: {
+    month: 4,
+    day: 1, // first day of May
+  },
+  fall: {
+    month: 7,
+    day: 15, // middle of August
+  },
+} as const;
+
+export const ALL_DATES_RANGE_UNIX = {
+  start: -8640000000000000,
+  end: 8640000000000000,
+} as const;
+
+export interface Semester {
+  name: string;
+  startDate: Date;
+  endDate: Date;
+}

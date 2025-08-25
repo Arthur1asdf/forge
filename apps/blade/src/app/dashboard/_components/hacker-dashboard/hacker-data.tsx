@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { render } from "@react-email/render";
 import { CircleCheckBig, Loader2 } from "lucide-react";
 
 import { USE_CAUTION } from "@forge/consts/knight-hacks";
@@ -19,6 +20,7 @@ import { Input } from "@forge/ui/input";
 import { toast } from "@forge/ui/toast";
 
 import type { api as serverCall } from "~/trpc/server";
+import { GemiKnightsConfirmationEmail } from "~/app/admin/hackathon/hackers/_components/gemiknights-confirmation-email";
 import { HACKER_STATUS_MAP } from "~/consts";
 import { api } from "~/trpc/react";
 import { HackerQRCodePopup } from "./hacker-qr-button";
@@ -37,23 +39,54 @@ export function HackerData({
   const [isOpen, setIsOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
-  const { data: hacker, isError } = api.hacker.getHacker.useQuery(undefined, {
-    initialData: data,
+  const { data: hacker, isError } = api.hacker.getHacker.useQuery(
+    {},
+    {
+      initialData: data,
+    },
+  );
+
+  const { data: hackathonData } = api.hackathon.getHackathon.useQuery({
+    hackathonName: undefined,
+  });
+
+  const sendEmail = api.email.sendEmail.useMutation({
+    onSuccess: () => {
+      toast.success("Check your email for the final step!");
+    },
+    onError: (opts) => {
+      toast.error(opts.message);
+    },
   });
 
   const utils = api.useUtils();
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setLoading(true);
     confirmHacker.mutate({
-      id: hacker?.id,
+      id: hacker?.id ?? "",
+    });
+
+    if (!hacker) return;
+
+    const html = await render(
+      <GemiKnightsConfirmationEmail
+        name={`${hacker.firstName} ${hacker.lastName}`}
+      />,
+    );
+
+    sendEmail.mutate({
+      from: "donotreply@knighthacks.org",
+      to: hacker.email,
+      subject: "GemiKnights 2025 - FINAL STEP: Complete MLH Registration!",
+      body: html,
     });
   };
 
   const handleWithdraw = () => {
     setLoading(true);
     withdrawHacker.mutate({
-      id: hacker?.id,
+      id: hacker?.id ?? "",
     });
   };
 
@@ -124,7 +157,14 @@ export function HackerData({
       </div>
       <div className="flex flex-col justify-center gap-y-6">
         <div>
-          <div className="animate-fade-in text-lg font-bold">Status</div>
+          {hacker?.firstName && hacker.lastName && (
+            <div className="animate-fade-in pb-2 text-xl font-bold">
+              Hello, {hacker.firstName} {hacker.lastName}
+            </div>
+          )}
+          <div className="animate-fade-in text-lg font-bold">
+            Status for {hackathonData?.displayName}
+          </div>
           <div className="flex gap-x-2">
             <div
               className={`text-xl font-bold ${hackerStatusColor} animate-fade-in`}
@@ -139,29 +179,46 @@ export function HackerData({
             )}
           </div>
         </div>
-        <div>
+        {/* <div>
           <div className="animate-fade-in text-lg font-bold">Class</div>
           <div className="animate-fade-in text-xl font-bold text-black dark:text-white">
             TBD
           </div>
-        </div>
+        </div> */}
       </div>
       <div className="mt-6 flex w-full items-center justify-center gap-x-1 sm:ml-7 md:mt-5 lg:mt-0">
         <HackerQRCodePopup />
         {/* Confirm Button */}
-        {hackerStatus === "Accepted" && (
-          <Button
-            size="lg"
-            className="animate-fade-in gap-2 !rounded-none"
-            onClick={handleConfirm}
-          >
-            {loading ? (
-              <Loader2 className="w-[85px] animate-spin" />
-            ) : (
-              <span className="text-lg font-bold text-white">CONFIRM</span>
+
+        {hackerStatus === "Accepted" &&
+          hackathonData?.confirmationDeadline != null && (
+            <Button
+              size="lg"
+              className={`animate-fade-in gap-2 !rounded-none ${
+                hackathonData.confirmationDeadline < new Date()
+                  ? "bg-gray-700 hover:bg-gray-900"
+                  : ""
+              }`}
+              onClick={handleConfirm}
+              disabled={hackathonData.confirmationDeadline < new Date()}
+            >
+              {loading ? (
+                <Loader2 className="w-[85px] animate-spin" />
+              ) : (
+                <span className="text-lg font-bold text-white">CONFIRM</span>
+              )}
+            </Button>
+          )}
+
+        <div>
+          {hackathonData?.confirmationDeadline &&
+            hackathonData.confirmationDeadline < new Date() && (
+              <div className="w-full py-2 pl-4 text-center text-gray-500">
+                The confirmation deadline has passed.
+              </div>
             )}
-          </Button>
-        )}
+        </div>
+
         {/* Confirm Dialog */}
         <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
           <DialogContent className="sm:max-w-md">

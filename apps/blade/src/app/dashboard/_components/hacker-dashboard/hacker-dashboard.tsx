@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
 import type { api as serverCall } from "~/trpc/server";
 import { api } from "~/trpc/server";
@@ -17,13 +16,9 @@ export default async function HackerDashboard({
 }: {
   hacker: Awaited<ReturnType<(typeof serverCall.hacker)["getHacker"]>>;
 }) {
-  if (!hacker) {
-    redirect("/hacker/application");
-  }
-
   const [resume, pastHackathons] = await Promise.allSettled([
     api.resume.getResume(),
-    api.hacker.getHackathons(),
+    api.hackathon.getPastHackathons(),
   ]);
 
   return (

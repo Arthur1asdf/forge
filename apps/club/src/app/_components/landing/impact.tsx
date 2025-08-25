@@ -5,6 +5,8 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
+import NeonTkSVG from "./assets/neon-tk";
+import SwordSVG from "./assets/sword";
 import Expandable from "./impact-assets/expandable";
 
 export default function Impact() {
@@ -60,10 +62,15 @@ export default function Impact() {
   return (
     <div
       ref={containerRef}
-      className="flex h-screen min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#1a0b2e] via-[#120624] to-[#0F172A]"
+      className="relative flex h-screen min-h-screen flex-col items-center justify-center"
     >
-      <div ref={headerRef} className="mb-3 flex items-center justify-center">
-        <p className="font-pragati mr-3 text-xl font-bold tracking-wide text-white/80 md:text-3xl">
+      <NeonTkSVG className="animate-float absolute bottom-[-151px] left-[10px] hidden w-[300px] text-purple-400 opacity-50 md:block" />
+      <SwordSVG className="animate-float absolute right-20 top-0 hidden w-[300px] text-purple-500 opacity-50 md:block" />
+      <div
+        ref={headerRef}
+        className="mb-16 flex flex-col items-center justify-center gap-2 md:mb-0"
+      >
+        <p className="font-pragati text-xl font-bold tracking-wide text-white [text-shadow:0px_0px_40px_#6B21A8,0px_0px_20px_#6B21A8,0px_0px_10px_#6B21A8] md:text-3xl">
           How we make an
         </p>
         <h1
@@ -75,7 +82,7 @@ export default function Impact() {
       </div>
       <div
         ref={expandableRef}
-        className="flex h-[600px] w-full items-center justify-center md:w-2/3"
+        className="mt-12 flex h-[600px] w-full items-center justify-center md:w-2/3 xl:h-[700px]"
       >
         <Expandable autoPlay={inView} />
       </div>

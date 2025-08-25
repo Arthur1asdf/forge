@@ -29,8 +29,14 @@ export const emailRouter = {
           },
         });
       } catch (err: unknown) {
-        if ((err as GaxiosError).code !== "409") {
+        const gaxiosError = err as GaxiosError;
+        if (!(gaxiosError.code === "409" || gaxiosError.status === 409)) {
           console.error("Error creating sendAs alias:", err);
+          throw new Error(
+            `Failed to create sendAs alias: ${
+              gaxiosError.message || "Unknown error"
+            }`,
+          );
         }
       }
 
