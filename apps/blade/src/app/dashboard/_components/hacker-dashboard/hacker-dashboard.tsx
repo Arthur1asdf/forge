@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import type { api as serverCall } from "~/trpc/server";
+import { HackerAppCard } from "~/app/_components/option-cards";
 import { api } from "~/trpc/server";
 import { HackerData } from "./hacker-data";
 import { HackerResumeButton } from "./hacker-resume-button";
@@ -21,9 +22,35 @@ export default async function HackerDashboard({
     api.hackathon.getPastHackathons(),
   ]);
 
+  const currentHackathon = await api.hackathon.getCurrentHackathon();
+
+  if (!hacker) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-y-6 text-xl font-semibold">
+        <p className="w-full max-w-xl text-center text-2xl">
+          Register for KnightHacks today!
+        </p>
+        <div className="flex flex-wrap justify-center gap-5">
+          {
+            //if there is no current hackathon then this page is never rendered anyway
+            currentHackathon && (
+              <HackerAppCard hackathonName={currentHackathon.name} />
+            )
+          }
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="animate-mobile-initial-expand relative mx-auto flex h-0 w-[90%] max-w-[70rem] bg-[#E5E7EB] dark:bg-[#0A0F1D] sm:py-0 sm:pb-0 lg:max-h-56">
+      <div className="animate-fade-in mb-8">
+        <h2 className="text-xl font-bold tracking-tight">
+          Hello, {hacker.firstName}!
+        </h2>
+        <p className="text-muted-foreground">Hackathon Dashboard</p>
+      </div>
+      <div className="animate-mobile-initial-expand relative mx-auto flex h-0 bg-[#E5E7EB] dark:bg-[#0A0F1D] sm:py-0 sm:pb-0 lg:max-h-56">
         {/* Main content */}
         <HackerData data={hacker} />
 
@@ -52,7 +79,7 @@ export default async function HackerDashboard({
         {/* Left side rectangle */}
         <div className="absolute -left-3 top-0 h-full w-[0.4rem] bg-primary"></div>
       </div>
-      <div className="mx-auto mb-10 mt-20 flex w-[90%] max-w-[70rem] flex-col justify-center gap-x-2 gap-y-4 sm:flex-row">
+      <div className="mx-auto mb-10 mt-20 flex flex-col justify-center gap-x-2 gap-y-4 sm:flex-row">
         {resume.status === "rejected" ||
         pastHackathons.status === "rejected" ? (
           <div className="font-bold">

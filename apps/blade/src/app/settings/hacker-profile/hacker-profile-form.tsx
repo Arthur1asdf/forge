@@ -48,8 +48,12 @@ import { HackerAppCard } from "../../_components/option-cards";
 
 export function HackerProfileForm({
   data,
+  hackathon,
 }: {
   data: Awaited<ReturnType<(typeof serverCaller.hacker)["getHacker"]>>;
+  hackathon: Awaited<
+    ReturnType<(typeof serverCaller.hackathon)["getCurrentHackathon"]>
+  >;
 }) {
   const [loading, setLoading] = useState(false);
   const utils = api.useUtils();
@@ -278,7 +282,7 @@ export function HackerProfileForm({
   if (!hacker) {
     return (
       <div className="flex items-center justify-center">
-        <HackerAppCard />
+        <HackerAppCard hackathonName={hackathon?.name || ""} />
       </div>
     );
   }
@@ -307,11 +311,7 @@ export function HackerProfileForm({
                 id: hacker.id,
                 resumeUrl,
               });
-            } catch (error) {
-              console.error(
-                "Error uploading resume or updating hacker:",
-                error,
-              );
+            } catch {
               toast.error(
                 "Something went wrong while processing your changes.",
               );
