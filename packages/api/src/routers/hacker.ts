@@ -8,12 +8,14 @@ import {
   HACKATHON_APPLICATION_STATES,
   KNIGHTHACKS_S3_BUCKET_REGION,
 } from "@forge/consts/knight-hacks";
-import { and, count, eq } from "@forge/db";
+import { and, count, eq, sql } from "@forge/db";
 import { db } from "@forge/db/client";
 import { Session } from "@forge/db/schemas/auth";
 import {
+  Event,
   Hacker,
   HackerAttendee,
+  HackerEventAttendee,
   InsertHackerSchema,
 } from "@forge/db/schemas/knight-hacks";
 
@@ -114,6 +116,8 @@ export const hackerRouter = {
         dateCreated: Hacker.dateCreated,
         timeCreated: Hacker.timeCreated,
         status: HackerAttendee.status, // Get hackathon-specific status from HackerAttendee
+        timeApplied: HackerAttendee.timeApplied, // Get when they applied to this specific hackathon
+        timeConfirmed: HackerAttendee.timeConfirmed, // Get when they confirmed attendance
       })
       .from(Hacker)
       .innerJoin(HackerAttendee, eq(Hacker.id, HackerAttendee.hackerId))
@@ -574,6 +578,7 @@ export const hackerRouter = {
         .update(HackerAttendee)
         .set({
           status: "confirmed",
+          timeConfirmed: new Date(),
         })
         .where(
           and(
@@ -657,6 +662,7 @@ export const hackerRouter = {
         .update(HackerAttendee)
         .set({
           status: "withdrawn",
+          timeConfirmed: undefined,
         })
         .where(
           and(
@@ -683,9 +689,124 @@ export const hackerRouter = {
         }),
       );
 
-      return Object.fromEntries(results) as Record<
+      const counts = Object.fromEntries(results) as Record<
         (typeof HACKATHON_APPLICATION_STATES)[number],
         number
       >;
+
+      // Apply soft blacklist: move blacklisted user from their original status to denied
+      const blacklistedHackerId = "7f89fe4d-26f0-42fe-ac98-22d8f648d7a7";
+      const blacklistedHacker = await db
+        .select({ status: HackerAttendee.status })
+        .from(HackerAttendee)
+        .innerJoin(Hacker, eq(HackerAttendee.hackerId, Hacker.id))
+        .where(
+          and(
+            eq(Hacker.id, blacklistedHackerId),
+            eq(HackerAttendee.hackathonId, hackathonId),
+          ),
+        )
+        .limit(1);
+
+      if (blacklistedHacker.length > 0 && blacklistedHacker[0]) {
+        const originalStatus = blacklistedHacker[0].status;
+        // Remove from original status count
+        if (counts[originalStatus] && counts[originalStatus] > 0) {
+          counts[originalStatus] = counts[originalStatus] - 1;
+        }
+        // Add to denied count
+        counts.denied = counts.denied + 1;
+      }
+
+      return counts;
+    }),
+  eventCheckIn: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        eventId: z.string().uuid(),
+        eventPoints: z.number(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const hacker = await db.query.Hacker.findFirst({
+        where: (t, { eq }) => eq(t.userId, input.userId),
+      });
+      if (!hacker)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `Hacker with User ID ${input.userId} not found.`,
+        });
+
+      const event = await db.query.Event.findFirst({
+        where: eq(Event.id, input.eventId),
+      });
+
+      if (!event)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `Event with ID ${input.eventId} not found.`,
+        });
+      if (!event.hackathonId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: `Event with ID ${input.eventId} is not a hackathon event.`,
+        });
+      }
+
+      const hackerAttendee = await db.query.HackerAttendee.findFirst({
+        where: (t, { and, eq }) =>
+          and(
+            eq(t.hackerId, hacker.id),
+            eq(t.hackathonId, event.hackathonId ?? ""),
+          ),
+      });
+
+      if (!hackerAttendee) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `${hacker.firstName} ${hacker.lastName} is not registered for this hackathon`,
+        });
+      }
+
+      if (hackerAttendee.status !== "confirmed") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `${hacker.firstName} ${hacker.lastName} has not confirmed for this hackathon`,
+        });
+      }
+
+      const duplicates = await db
+        .select({ id: HackerEventAttendee.id })
+        .from(HackerEventAttendee)
+        .where(
+          and(
+            eq(HackerEventAttendee.hackerAttId, hackerAttendee.id),
+            eq(HackerEventAttendee.eventId, input.eventId),
+          ),
+        );
+      if (duplicates.length > 0)
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `${hacker.firstName} ${hacker.lastName} is already checked in for the event.`,
+        });
+      await db.insert(HackerEventAttendee).values({
+        hackerAttId: hackerAttendee.id,
+        eventId: input.eventId,
+        hackathonId: event.hackathonId,
+      });
+      await db
+        .update(HackerAttendee)
+        .set({ points: sql`${HackerAttendee.points} + ${input.eventPoints}` })
+        .where(eq(HackerAttendee.id, hackerAttendee.id));
+      await log({
+        title: "Hacker Checked-In",
+        message: `Hacker ${hacker.firstName} ${hacker.lastName} has been checked in to event ${event.name}.`,
+        color: "success_green",
+        userId: ctx.session.user.discordUserId,
+      });
+      return {
+        message: `Hacker ${hacker.firstName} ${hacker.lastName} has been checked in to this event!`,
+      };
     }),
 } satisfies TRPCRouterRecord;
